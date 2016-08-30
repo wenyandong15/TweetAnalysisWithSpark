@@ -1,22 +1,42 @@
 package org.TwitterAnalysisWithSpark;
 
-import org.apache.spark.SparkConf;
+import com.datastax.spark.connector.cql.CassandraConnector;
+import com.datastax.spark.connector.japi.CassandraJavaUtil;
+import com.datastax.spark.connector.japi.CassandraStreamingJavaUtil;
+import org.apache.spark.*;
 import org.apache.spark.streaming.*;
 import org.apache.spark.streaming.api.java.*;
 import org.apache.spark.streaming.twitter.TwitterUtils;
 import twitter4j.conf.*;
 import twitter4j.auth.*;
 import twitter4j.Status;
+import com.datastax.spark.connector.*;
 import org.apache.spark.api.java.function.Function;
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.*;
+import org.apache.spark.api.java.function.Function;
+
+import java.io.Serializable;
+
+import static com.datastax.spark.connector.japi.CassandraJavaUtil.*;
+import static com.datastax.spark.connector.japi.CassandraStreamingJavaUtil.*;
 
 public class SparkJavaTest {
     public static void main(String[] args) {
 
+        String[] jarPaths = new String[1];
 
+        jarPaths[0] =    "/Users/wenyan/git/TweetAnalysisWithSpark/target/TweetAnalysisWithSpark-1.0-SNAPSHOT.jar";
         JavaStreamingContext jsc = new JavaStreamingContext(
-                new SparkConf().setAppName("SparkJavaTest").setMaster("local[2]"),
+                new SparkConf().set("spark.cassandra.connection.host", "localhost").setAppName("SparkJavaTest").setMaster("local[2]").set("spark.cassandra.connection.host", "127.0.0.1"),
                 Durations.seconds(2)
         );
+
+        /* SparkConf conf = new SparkConf(true).set("spark.cassandra.connection.host", "localhost");
+        SparkContext sc = new SparkContext("local[2]", "test", conf);
+        CassandraJavaUtil.javaFunctions(sc).    */
+
+        // Build Twitter OAuth configuration
         /*
             Configuration conf = new  ConfigurationBuilder()
                 .setOAuthConsumerKey("Z9nwckWtSbxKzFssN9L6y5nyb")
@@ -32,8 +52,9 @@ public class SparkJavaTest {
         JavaReceiverInputDStream<Status> twitterStream =
                 TwitterUtils.createStream(jsc, auth);
 
-        // JavaDStream<String> tweetTexts = twitterStream.filter(tweet -> tweet.getLang()=="en").map((status) -> status.getText());
+
         JavaDStream<Status> enTwitterStream = twitterStream.filter(tweet -> tweet.getLang().equalsIgnoreCase("en"));
+        JavaDStream<TweetText> enTwitterTextStream = enTwitterStream.map( status -> new TweetText(status.getId(), status.getText()));
 
         // JavaDStream<String> tweetTexts = enTwitterStream.map(status -> status.getHashtagEntities());
         // tweetTexts.foreachRDD(tweets -> {
@@ -41,8 +62,13 @@ public class SparkJavaTest {
               //                         tweetTexts.foreachRDD(rdd -> {
             // rdd.foreach(a -> System.out.println(a));});
 
-        enTwitterStream.print();
+        // enTwitterStream.print();
+        CassandraStreamingJavaUtil.javaFunctions(enTwitterTextStream).writerBuilder("dev", "tweet_text", CassandraJavaUtil.mapToRow(TweetText.class)).saveToCassandra();
+
+
+
         jsc.start();
+
         // statuses.saveAsHadoopFiles("hdfs://HadoopSystem-150s:8020/Spark_Twitter_out","txt");
         jsc.awaitTermination();
 
@@ -76,6 +102,7 @@ public class SparkJavaTest {
 
 
     }
+
 }
 
 
